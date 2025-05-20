@@ -60,11 +60,8 @@ np.random.seed(42)
 df['temperature'] = np.random.uniform(15, 30, size=len(df)).round(1)
 df['humidity'] = np.random.uniform(30, 90, size=len(df)).round(1)
 df['co2'] = np.random.randint(400, 1000, size=len(df))
-# Placeholder indoor columns
-for col in [
-    'indoor_temperature', 'indoor_humidity', 'indoor_pressure',
-    'indoor_tvoc', 'indoor_co2eq', 'indoor_ethanol', 'indoor_h2'
-]:
+df['pressure'] = np.random.uniform(950, 1050, size=len(df)).round(1)
+for col in ['indoor_temperature', 'indoor_humidity', 'indoor_pressure', 'indoor_tvoc', 'indoor_co2eq', 'indoor_ethanol', 'indoor_h2']:
     df[col] = None
 
 df_filtered = df.copy()
@@ -98,15 +95,11 @@ def make_donut(val, text, clr):
     txt = chart.mark_text(align='center', fontSize=32, fontWeight=700, color=cols[0]).encode(text=alt.value(f"{val} %"))
     return chart + txt
 
-# State and layout
+# --- Layout & State ---
 if 'metric' not in st.session_state:
     st.session_state.metric = 'temperature'
 col1, col2, col3 = st.columns((1.5, 4.5, 2), gap='medium')
 now = pd.Timestamp.now()
-
-def get_latest(df):
-    return df.sort_values('timestamp').iloc[-1] if not df.empty else None
-latest = get_latest(df_filtered)
 
 # --- Outdoor Panel ---
 with col1:
@@ -135,7 +128,7 @@ with col1:
         rc.metric('Weather', current_data.get('outdoor_weather_category', 'N/A'))
         rc.write(current_data.get('outdoor_weather', 'N/A'))
         if icon:
-            rc.image(f"http://openweathermap.org/img/wn/{icon}@2x.png", width=80)
+            rc.image(f"http://openweathermap.org/img/wn/{icon}@2x.png", width=150)
     else:
         lc.write('Unable to fetch outdoor data.')
 
@@ -147,15 +140,10 @@ with col2:
     if mode.startswith('Next 4 days'):
         base = now.normalize()
         for i in range(1, 5):
-            dt = base + pd.Timedelta(days=i, hours=12)
-            # filter entries for that date
+            dt = base + pd.Timedelta(days=i)
             same_day = [x for x in forecast_json if x.get('dt_txt', '').startswith(dt.strftime('%Y-%m-%d'))]
             if same_day:
-                # pick entry closest to 12:00
-                def diff_hour(x):
-                    t = pd.to_datetime(x['dt_txt'])
-                    return abs((t.hour + t.minute/60) - 12)
-                m = min(same_day, key=diff_hour)
+                m = min(same_day, key=lambda x: abs((pd.to_datetime(x['dt_txt']).hour + pd.to_datetime(x['dt_txt']).minute/60) - 12))
             else:
                 m = {}
             entries.append({
@@ -183,18 +171,24 @@ with col2:
     tf = st.selectbox('Timeframe', ['Last 24 hours', 'Last 7 days', 'Last 30 days'])
     delta = pd.Timedelta(hours=24) if '24' in tf else pd.Timedelta(days=7) if '7' in tf else pd.Timedelta(days=30)
     df_time = df_filtered[df_filtered['timestamp'] >= now - delta]
-    btns = st.columns(3)
+    btns = st.columns(4)
     if btns[0].button('Temperature'):
         st.session_state.metric = 'temperature'
     if btns[1].button('Humidity'):
         st.session_state.metric = 'humidity'
     if btns[2].button('CO₂'):
         st.session_state.metric = 'co2'
+    if btns[3].button('Pressure'):
+        st.session_state.metric = 'pressure'
     metric = st.session_state.metric
-    field = metric if src == 'Outdoor' else f"indoor_{metric}"
-    titles = {'temperature': 'Temperature (°C)', 'humidity': 'Humidity (%)', 'co2': 'CO₂ (ppm)'}
-    colors = {'temperature': 'green', 'humidity': 'blue', 'co2': 'red'}
-    st.altair_chart(make_line_chart(df_time, 'timestamp', field, f"{src} {titles[metric]}", colors[metric]), use_container_width=True)
+    field_map = {'temperature': 'temperature', 'humidity': 'humidity', 'co2': 'co2', 'pressure': 'pressure'}
+    field = field_map.get(metric, 'temperature') if src == 'Outdoor' else f"indoor_{field_map.get(metric, 'temperature')}"
+    titles = {'temperature': 'Temperature (°C)', 'humidity': 'Humidity (%)', 'co2': 'CO₂ (ppm)', 'pressure': 'Pressure (hPa)'}
+    colors = {'temperature': 'green', 'humidity': 'blue', 'co2': 'red', 'pressure': 'orange'}
+    st.altair_chart(
+        make_line_chart(df_time, 'timestamp', field, f"{src} {titles[metric]}", colors[metric]),
+        use_container_width=True
+    )
 
 # --- Indoor Panel ---
 with col3:
