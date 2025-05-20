@@ -20,6 +20,7 @@ PASSWORD = "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3"
 URL_CURRENT = f"{BASE}/get-current-outdoor-weather?lat={LAT}&lon={LON}"
 URL_FORECAST = f"{BASE}/get-forecast-outdoor-weather?lat={LAT}&lon={LON}"
 URL_INDOOR = f"{BASE}/get_indoor_weather_json?lat={LAT}&lon={LON}&passwd={PASSWORD}"
+URL_AQI_BATCH = f"{BASE}/get-indoor-air-quality-index"
 URL_HISTORICAL_INDOOR = f"{BASE}/get-historical-indoor-weather"
 URL_HISTORICAL_OUTDOOR = f"{BASE}/get-historical-outdoor-weather"
 
@@ -45,6 +46,19 @@ try:
     indoor_data = raw_i if resp_i.status_code == 200 and 'indoor_temperature' in raw_i else raw_i.get('data', {})
 except Exception:
     indoor_data = {}
+
+# Calculate Indoor AQI via batch endpoint
+try:
+    payload = [{
+        'indoor_temperature': indoor_data.get('indoor_temperature'),
+        'indoor_humidity': indoor_data.get('indoor_humidity'),
+        'indoor_co2eq': indoor_data.get('indoor_co2eq'),
+        'indoor_tvoc': indoor_data.get('indoor_tvoc')
+    }]
+    resp_aqi = requests.post(URL_AQI_BATCH, json=payload, timeout=5)
+    aqi_result = resp_aqi.json()[0] if resp_aqi.status_code == 200 else {}
+except Exception:
+    aqi_result = {}
 
 # Historical indoor
 try:
@@ -252,6 +266,16 @@ with col3:
         hv_i = round(indoor_data.get('indoor_humidity', 0))
         a.altair_chart(make_donut(hv_i, 'Indoor Humidity', 'blue'), use_container_width=True)
         a.metric('Pressure (hPa)', indoor_data.get('indoor_pressure', 'N/A'))
+        # Indoor AQI via batch endpoint
+        if aqi_result:
+            idx = aqi_result.get('index')
+            lbl = aqi_result.get('label')
+            desc = aqi_result.get('description')
+            a.markdown('**Indoor Air Quality Index**')
+            a.altair_chart(make_aqi_donut(idx), use_container_width=True)
+            a.write(f"**{lbl}**: {desc}")
+        else:
+            a.write('Unable to calculate indoor air quality index.')
         b.metric('TVOC (ppb)', indoor_data.get('indoor_tvoc', 'N/A'))
         b.metric('CO₂eq (ppm)', indoor_data.get('indoor_co2eq', 'N/A'))
         b.metric('Ethanol (ppm)', indoor_data.get('indoor_ethanol', 'N/A'))
