@@ -45,27 +45,13 @@ try:
         params={"lat": LAT, "lon": LON, "passwd": PASSWORD},
         timeout=5
     )
-    # Debug response
-    st.write(f"Indoor fetch - URL: {resp_i.url}")
-    st.write(f"Indoor fetch - Status: {resp_i.status_code}")
-    st.write(f"Indoor fetch - Raw text: {resp_i.text}")
-    try:
-        raw_i = resp_i.json()
-        if resp_i.status_code == 200:
-            # If the JSON is directly sensor data
-            if 'indoor_temperature' in raw_i:
-                indoor_data = raw_i
-            # If wrapped in status/data
-            elif raw_i.get('status') == 'success' and 'data' in raw_i:
-                indoor_data = raw_i.get('data', {})
-            else:
-                st.write(f"Indoor fetch error: {raw_i.get('status')} - {raw_i.get('data')}")
-        else:
-            st.write(f"Indoor fetch failed with status {resp_i.status_code}")
-    except ValueError:
-        st.write("Failed to parse indoor JSON response")
-except Exception as e:
-    st.write(f"Exception fetching indoor data: {e}")
+    raw_i = resp_i.json()
+    if resp_i.status_code == 200 and 'indoor_temperature' in raw_i:
+        indoor_data = raw_i
+    elif raw_i.get('status') == 'success' and 'data' in raw_i:
+        indoor_data = raw_i.get('data', {})
+except Exception:
+    pass
 
 # --- Demo data for charts ---
 date_rng = pd.date_range(start='2025-01-01', end=pd.Timestamp.now(), freq='h')
@@ -76,8 +62,8 @@ df['humidity'] = np.random.uniform(30, 90, size=len(df)).round(1)
 df['co2'] = np.random.randint(400, 1000, size=len(df))
 # Placeholder indoor columns
 for col in [
-    'indoor_temperature','indoor_humidity','indoor_pressure',
-    'indoor_tvoc','indoor_co2eq','indoor_ethanol','indoor_h2','indoor_light_lux'
+    'indoor_temperature', 'indoor_humidity', 'indoor_pressure',
+    'indoor_tvoc', 'indoor_co2eq', 'indoor_ethanol', 'indoor_h2'
 ]:
     df[col] = None
 
@@ -97,7 +83,7 @@ def make_line_chart(df, x, y, title=None, color=None):
     )
 
 def make_donut(val, text, clr):
-    pals = {'green':['#27AE60','#12783D'], 'blue':['#29b5e8','#155F7A'], 'red':['#E74C3C','#781F16']}
+    pals = {'green': ['#27AE60', '#12783D'], 'blue': ['#29b5e8', '#155F7A'], 'red': ['#E74C3C', '#781F16']}
     cols = pals.get(clr, ['#CCCCCC', '#777777'])
     src = pd.DataFrame({'Category': ['', text], '% value': [100-val, val]})
     chart = (
@@ -135,7 +121,7 @@ with col1:
         lc.altair_chart(make_donut(hv, 'Outdoor Humidity', 'blue'), use_container_width=True)
         ts = current_data.get('timestamp')
         if ts:
-            lc.write(pd.to_datetime(ts, unit='s').strftime('last updated %d.%m.%Y at %H:%Mpm'))
+            lc.write(pd.to_datetime(ts, unit='s').strftime('last updated %d.%m.%Y at %H:%M'))
         lp = current_data.get('outdoor_rain_1h', 0)
         lc.markdown('**Rain (1h mm)**')
         lc.metric('', lp)
@@ -162,8 +148,16 @@ with col2:
         base = now.normalize()
         for i in range(1, 5):
             dt = base + pd.Timedelta(days=i, hours=12)
-            s = dt.strftime('%Y-%m-%d %H:%M:%S')
-            m = next((x for x in forecast_json if x.get('dt_txt') == s), {})
+            # filter entries for that date
+            same_day = [x for x in forecast_json if x.get('dt_txt', '').startswith(dt.strftime('%Y-%m-%d'))]
+            if same_day:
+                # pick entry closest to 12:00
+                def diff_hour(x):
+                    t = pd.to_datetime(x['dt_txt'])
+                    return abs((t.hour + t.minute/60) - 12)
+                m = min(same_day, key=diff_hour)
+            else:
+                m = {}
             entries.append({
                 'label': dt.strftime('%b %d'),
                 'temp': m.get('main', {}).get('temp', '--'),
@@ -206,20 +200,16 @@ with col2:
 with col3:
     st.markdown('#### Indoor Sensor Readings')
     if indoor_data:
-        st.json(indoor_data)
         a, b = st.columns(2)
         a.metric('Temp (°C)', indoor_data.get('indoor_temperature', 'N/A'))
         a.markdown('**Humidity (%)**')
-        hv = indoor_data.get('indoor_humidity', 0)
+        hv = round(indoor_data.get('indoor_humidity', 0))
         a.altair_chart(make_donut(hv, 'Indoor Humidity', 'blue'), use_container_width=True)
         a.metric('Pressure (hPa)', indoor_data.get('indoor_pressure', 'N/A'))
         b.metric('TVOC (ppb)', indoor_data.get('indoor_tvoc', 'N/A'))
         b.metric('CO₂eq (ppm)', indoor_data.get('indoor_co2eq', 'N/A'))
         b.metric('Ethanol (ppm)', indoor_data.get('indoor_ethanol', 'N/A'))
         b.metric('H₂ (ppb)', indoor_data.get('indoor_h2', 'N/A'))
-        motion = "Yes" if indoor_data.get('indoor_motion_detected') else "No"
-        b.metric('Motion Detected', motion)
-        b.metric('Light (lux)', indoor_data.get('indoor_light_lux', 'N/A'))
         ts = indoor_data.get('timestamp')
         if ts:
             a.write(pd.to_datetime(ts).strftime('last updated %d.%m.%Y at %H:%M'))
