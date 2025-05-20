@@ -86,18 +86,40 @@ if not hist_outdoor_df.empty:
 else:
     hist_outdoor_df = pd.DataFrame(columns=['timestamp','outdoor_temperature','outdoor_humidity','outdoor_pressure','outdoor_weather','latitude','longitude','outdoor_wind_speed','outdoor_cloud_coverage','outdoor_air_co','outdoor_air_quality_index','outdoor_wind_deg','outdoor_rain_1h'])
 
+
+# --- Color mappings for metrics ---
+COLOR_MAP = {
+    'temperature': '#27AE60',  # green
+    'humidity': '#29b5e8',     # light blue
+    'co2': '#E74C3C',          # red
+    'pressure': '#F1C40F'      # yellow
+}
+POINT_COLOR_MAP = {
+    'temperature': '#12783D',
+    'humidity': '#155F7A',
+    'co2': '#781F16',
+    'pressure': '#B7950B'
+}
+
 # --- Chart helpers ---
-def make_line_chart(df, x, y, title=None):
-    return (
-        alt.Chart(df)
-        .mark_line(point=True)
-        .encode(
+def make_line_chart(df, x, y, title=None, metric=None):
+    color = COLOR_MAP.get(metric, '#CCCCCC')
+    point_color = POINT_COLOR_MAP.get(metric, '#777777')
+    base = alt.Chart(df)
+    line = base.mark_line(point=False, color=color)
+    points = base.mark_point(color=point_color)
+    chart = (
+        line.encode(
             x=alt.X(f"{x}:T", title="Timestamp"),
             y=alt.Y(f"{y}:Q", title=title),
             tooltip=[x, y]
+        ) +
+        points.encode(
+            x=alt.X(f"{x}:T"),
+            y=alt.Y(f"{y}:Q")
         )
-        .properties(width=700, height=400, title=title)
     )
+    return chart.properties(width=700, height=400, title=title)
 
 
 def make_donut(val, text, clr):
@@ -251,7 +273,7 @@ with col2:
         st.altair_chart(
             make_line_chart(
                 df_time, 'timestamp', outdoor_field if src == 'Outdoor' else indoor_field,
-                f"{src} {titles[metric]}"
+                f"{src} {titles[metric]}", metric=metric
             ),
             use_container_width=True
         )
