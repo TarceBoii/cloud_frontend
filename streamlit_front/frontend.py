@@ -13,7 +13,7 @@ st.set_page_config(
 alt.theme.enable("dark")
 
 # --- Config ---
-BASE = "https://cloud-project-442302770654.europe-west6.run.app"
+BASE = "https://plouf-backend-442302770654.europe-west6.run.app"
 LAT = 52.5200
 LON = 13.4050
 URL_CURRENT = f"{BASE}/get-current-outdoor-weather?lat={LAT}&lon={LON}"
